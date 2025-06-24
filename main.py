@@ -1,203 +1,100 @@
-from fastapi import FastAPI, UploadFile, File, Request
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import shutil
 import subprocess
-import os
 
 app = FastAPI()
 
-# Папки и статика
 app.mount("/videos", StaticFiles(directory="videos"), name="videos")
 app.mount("/thumbnails", StaticFiles(directory="thumbnails"), name="thumbnails")
+
 Path("videos").mkdir(exist_ok=True)
 Path("thumbnails").mkdir(exist_ok=True)
 
 
 @app.get("/", response_class=HTMLResponse)
-async def list_videos():
-    video_list_html = ""
+async def index():
+    video_items = ""
     for file in Path("videos").iterdir():
         name = file.name
         thumb = f"/thumbnails/{name}.jpg"
         video_link = f"/videos/{name}"
-        delete_form = f"""
-            <form action="/delete/{name}" method="post" style="display:inline;">
-                <button class="delete-btn" type="submit">🗑 Удалить</button>
-            </form>
-        """
-        video_list_html += f"""
-        <div class="card">
-            <img src="{thumb}" alt="превью" class="thumb">
-            <div class="info">
-                <p><strong>{name}</strong></p>
-                <a href="{video_link}" target="_blank" class="watch-btn">▶ Смотреть</a>
-                {delete_form}
+        video_items += f"""
+        <div class='bg-white rounded-lg shadow hover:shadow-lg transition p-4'>
+            <img src='{thumb}' alt='Превью' class='w-full h-48 object-cover rounded-md mb-4 border' />
+            <p class='text-gray-800 font-medium mb-2 truncate'>{name}</p>
+            <div class='flex justify-between'>
+                <a href='{video_link}' target='_blank' class='bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm'>
+                    ▶️ Смотреть
+                </a>
+                <form method='post' action='/delete/{name}'>
+                    <button type='submit' class='bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded text-sm'>
+                        🗑 Удалить
+                    </button>
+                </form>
             </div>
         </div>
         """
 
-    return f"""
-    <html>
-    <head>
-        <title>Мой Видеообменник</title>
-        <style>
-            body {{
-                font-family: 'Segoe UI', sans-serif;
-                background: #f4f4f4;
-                padding: 20px;
-                max-width: 800px;
-                margin: auto;
-            }}
-            h1 {{
-                text-align: center;
-                color: #333;
-            }}
-            a.button {{
-                display: inline-block;
-                padding: 10px 16px;
-                background: #007bff;
-                color: #fff;
-                text-decoration: none;
-                border-radius: 8px;
-                margin-bottom: 20px;
-                transition: background 0.3s;
-            }}
-            a.button:hover {{
-                background: #0056b3;
-            }}
-            .card {{
-                background: #fff;
-                border-radius: 12px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-                padding: 16px;
-                margin-bottom: 20px;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-            }}
-            .thumb {{
-                max-width: 100%;
-                border-radius: 10px;
-                margin-bottom: 12px;
-            }}
-            .info {{
-                text-align: center;
-            }}
-            .watch-btn {{
-                padding: 8px 14px;
-                background: #28a745;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                text-decoration: none;
-                margin-right: 10px;
-            }}
-            .watch-btn:hover {{
-                background: #218838;
-            }}
-            .delete-btn {{
-                padding: 8px 14px;
-                background: #dc3545;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                cursor: pointer;
-            }}
-            .delete-btn:hover {{
-                background: #c82333;
-            }}
-            @media (max-width: 600px) {{
-                body {{
-                    padding: 10px;
-                }}
-                .card {{
-                    padding: 12px;
-                }}
-            }}
-        </style>
-    </head>
-    <body>
-        <h1>🎥 Видеообменник</h1>
-        <div style="text-align:center;">
-            <a href="/upload" class="button">➕ Загрузить новое видео</a>
-        </div>
-        {video_list_html if video_list_html else '<p style="text-align:center;">Нет загруженных видео.</p>'}
-    </body>
-    </html>
-    """
+    return HTMLResponse(f"""
+<!DOCTYPE html>
+<html lang='ru'>
+<head>
+  <meta charset='UTF-8' />
+  <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+  <title>🎥 Видеообменник</title>
+  <script src='https://cdn.tailwindcss.com'></script>
+</head>
+<body class='bg-gray-100 font-sans leading-normal tracking-normal'>
+  <div class='max-w-5xl mx-auto p-4'>
+    <h1 class='text-3xl font-bold text-center text-gray-800 mb-6'>🎥 Мои видео</h1>
+    <div class='flex justify-center mb-6'>
+      <a href='/upload'
+         class='bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition'>
+        📤 Загрузить видео
+      </a>
+    </div>
+    <div class='grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3'>
+      {video_items if video_items else "<p class='text-center text-gray-500 mt-10'>Нет загруженных видео.</p>"}
+    </div>
+  </div>
+</body>
+</html>
+""")
 
 
 @app.get("/upload", response_class=HTMLResponse)
 async def upload_form():
     return """
     <html>
-    <head>
-        <title>Загрузка видео</title>
-        <style>
-            body {
-                font-family: 'Segoe UI', sans-serif;
-                background: #f4f4f4;
-                text-align: center;
-                padding: 40px;
-            }
-            form {
-                background: white;
-                display: inline-block;
-                padding: 30px;
-                border-radius: 10px;
-                box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-            }
-            input[type="file"] {
-                margin-bottom: 20px;
-            }
-            input[type="submit"] {
-                padding: 10px 16px;
-                background: #007bff;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                cursor: pointer;
-            }
-            input[type="submit"]:hover {
-                background: #0056b3;
-            }
-            a {
-                display: block;
-                margin-top: 20px;
-                text-decoration: none;
-                color: #007bff;
-            }
-        </style>
-    </head>
-    <body>
-        <form action="/upload" enctype="multipart/form-data" method="post">
-            <h2>Загрузить видео</h2>
-            <input name="file" type="file" accept="video/*" required><br>
-            <input type="submit" value="Загрузить">
-            <a href="/">⬅ Назад к списку</a>
+    <head><title>Загрузка видео</title></head>
+    <body style='font-family:sans-serif; padding:40px;'>
+        <h2>Загрузить видео</h2>
+        <form action='/upload' enctype='multipart/form-data' method='post'>
+            <input name='file' type='file' accept='video/*' required><br><br>
+            <input type='submit' value='Загрузить'>
         </form>
+        <br><a href='/'>Назад к списку</a>
     </body>
     </html>
     """
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
-    file_location = Path("videos") / file.filename
-    with open(file_location, "wb") as buffer:
+async def upload_video(file: UploadFile = File(...)):
+    file_path = Path("videos") / file.filename
+    with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Генерация превью
-    thumb_path = Path("thumbnails") / f"{file.filename}.jpg"
+    thumbnail_path = Path("thumbnails") / f"{file.filename}.jpg"
     subprocess.run([
         "ffmpeg",
-        "-i", str(file_location),
+        "-i", str(file_path),
         "-ss", "00:00:01.000",
         "-vframes", "1",
-        "-q:v", "2",
-        str(thumb_path)
+        str(thumbnail_path)
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     return RedirectResponse("/", status_code=303)
@@ -207,8 +104,10 @@ async def upload_file(file: UploadFile = File(...)):
 async def delete_video(filename: str):
     video_path = Path("videos") / filename
     thumb_path = Path("thumbnails") / f"{filename}.jpg"
+
     if video_path.exists():
         video_path.unlink()
     if thumb_path.exists():
         thumb_path.unlink()
+
     return RedirectResponse("/", status_code=303)
