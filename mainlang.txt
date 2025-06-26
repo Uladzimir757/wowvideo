@@ -51,7 +51,7 @@ translations = {
         "remove_in": "Will be deleted in",
         "upload_more": "Upload another",
         "report": "To report abuse, email:",
-        "mail": "wowvideoko@gmail.com"
+        "mail": "your@email.com"
     },
     "ru": {
         "my_videos": "Мои видео",
@@ -82,7 +82,7 @@ translations = {
         "remove_in": "Будет удалено через",
         "upload_more": "Загрузить другое",
         "report": "Для жалоб пишите на почту:",
-        "mail": "wowvideoko@gmail.com"
+        "mail": "your@email.com"
     }
 }
 
