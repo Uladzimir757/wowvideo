@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tr.f2f }}{% endblock %}
+
+{% block body_class %}min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-pink-200 to-purple-300{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md text-center">
+    <h2 class="text-2xl font-bold mb-4">{{ tr.f2f }}</h2>
+    <video id="f2fvideo" width="400" autoplay muted class="rounded mb-4 bg-black mx-auto"></video>
+    
+    <div id="controls" class="mb-4">
+        <button id="start-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full shadow font-bold transition-transform transform hover:scale-105">{{ tr.record_btn }}</button>
+        <button id="stop-btn" class="bg-red-500 hover:bg-red-600 text-white px-5 py-2 rounded-full shadow font-bold" style="display:none;">{{ tr.stop_btn }}</button>
+    </div>
+
+    <form id="f2f-form" method="post" enctype="multipart/form-data" action="/f2f_upload?lang={{ lang }}" class="hidden">
+      <input type="hidden" name="ttl" value="7">
+      <textarea name="question" placeholder="{{ tr.question }}" class="w-full border rounded p-2 mb-3"></textarea>
+      <button type="submit" id="send-btn" class="w-full bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded font-bold transition-colors">{{ tr.send_record_btn }}</button>
+    </form>
+    
+    <div class="mt-6">
+      <a href="/?lang={{ lang }}" class="text-blue-600 hover:underline">{{ tr.mainpage }}</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/f2f-recorder.js" defer></script>
+{% endblock %}

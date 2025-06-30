@@ -1,214 +1,315 @@
-from fastapi import FastAPI, UploadFile, File, Request
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 import shutil
-import subprocess
+import json
+import time
 import os
+import asyncio
+import sqlite3
+from uuid import uuid4
+from pathlib import Path
+from fastapi import FastAPI, Request, Form, File, UploadFile, Response, Depends
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
+
+# --- БАЗОВАЯ НАСТРОЙКА ---
+
+# Рекомендуется хранить секретный ключ в переменных окружения, а не в коде
+SECRET_KEY = os.environ.get("SECRET_KEY", "wowvideo_secret_key_2024_is_now_much_safer")
 
 app = FastAPI()
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 
-# Папки и статика
-app.mount("/videos", StaticFiles(directory="videos"), name="videos")
-app.mount("/thumbnails", StaticFiles(directory="thumbnails"), name="thumbnails")
-Path("videos").mkdir(exist_ok=True)
-Path("thumbnails").mkdir(exist_ok=True)
+# Пути к директориям
+BASE_DIR = Path(__file__).parent
+VIDEOS_DIR = BASE_DIR / "videos"
+THUMBS_DIR = BASE_DIR / "thumbnails"
+STATIC_DIR = BASE_DIR / "static"
+TEMPLATES_DIR = BASE_DIR / "templates"
+DB_FILE = BASE_DIR / "videos.db"
 
+# Создаем директории, если они не существуют
+VIDEOS_DIR.mkdir(exist_ok=True)
+THUMBS_DIR.mkdir(exist_ok=True)
+(STATIC_DIR / "js").mkdir(parents=True, exist_ok=True)
+TEMPLATES_DIR.mkdir(exist_ok=True)
+
+
+# Настройка шаблонизатора Jinja2
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+MAX_UPLOADS = 5
+
+# --- ЛОКАЛИЗАЦИЯ ---
+LANGS = {"en": "English", "ru": "Русский", "uk": "Українська", "pl": "Polski"}
+DEFAULT_LANG = "en"
+translations = {
+    "en": {
+        "title": "Video Share", "upload": "Upload Video", "record": "Record Video", "f2f": "Interview (F2F)",
+        "stat": "Statistics", "feedback": "Feedback", "lang": "Language", "mainpage": "Main Page",
+        "select_file": "Select video file", "ttl": "Storage time (days)", "upload_btn": "Upload",
+        "record_btn": "Start Recording", "stop_btn": "Stop", "send_record_btn": "Send Video",
+        "back_main": "Back", "your_videos": "Your Videos", "copy": "Copy Link", "delete": "Delete",
+        "copied": "Link copied!", "no_videos": "You haven't uploaded any videos yet.",
+        "limit_reached": "Upload limit reached (max 5).", "question": "Your question...",
+        "choose_lang": "Choose language:", "without_reg": "without registration, without ads",
+        "subscribe": "Subscribe",
+        "stat_total_videos": "Total videos", "stat_total_size": "Total size (MB)", "stat_avg_ttl": "Average TTL (days)"
+    },
+    # Здесь можно добавить русские, украинские и польские переводы
+}
+
+# --- РАБОТА С СЕССИЕЙ И ЯЗЫКОМ ---
+
+def get_lang(request: Request) -> str:
+    lang = request.query_params.get("lang")
+    if not lang or lang not in LANGS:
+        lang = request.cookies.get("lang", DEFAULT_LANG)
+    if lang not in LANGS:
+        lang = DEFAULT_LANG
+    return lang
+
+def set_lang_cookie(response: Response, lang: str):
+    response.set_cookie(key="lang", value=lang, max_age=365 * 24 * 60 * 60) # 1 year
+
+def get_user_uploads(request: Request) -> list:
+    return request.session.get("uploads", [])
+
+def add_upload_to_session(request: Request, video_id: str):
+    uploads = get_user_uploads(request)
+    uploads.append(video_id)
+    request.session["uploads"] = uploads
+
+def remove_upload_from_session(request: Request, video_id: str):
+    uploads = get_user_uploads(request)
+    if video_id in uploads:
+        uploads.remove(video_id)
+        request.session["uploads"] = uploads
+
+# --- РАБОТА С БАЗОЙ ДАННЫХ (SQLite) ---
+
+def get_db():
+    db = sqlite3.connect(DB_FILE)
+    db.row_factory = sqlite3.Row
+    try:
+        yield db
+    finally:
+        db.close()
+
+def init_db():
+    with sqlite3.connect(DB_FILE) as db:
+        cursor = db.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS videos (
+                id TEXT PRIMARY KEY,
+                original_filename TEXT NOT NULL,
+                saved_filename TEXT NOT NULL,
+                thumb_filename TEXT,
+                created_at REAL NOT NULL,
+                ttl_days INTEGER NOT NULL,
+                ip_address TEXT,
+                question TEXT,
+                size_bytes INTEGER
+            )
+        """)
+        db.commit()
+
+# --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ОБРАБОТКИ ВИДЕО ---
+
+async def process_and_save_video(request: Request, file: UploadFile, ttl: int, question: str = None):
+    ext = Path(file.filename).suffix or ".mp4"
+    video_id = str(uuid4())[:12]
+    saved_filename = f"{video_id}{ext}"
+    file_path = VIDEOS_DIR / saved_filename
+    file_size = 0
+
+    import aiofiles
+    async with aiofiles.open(file_path, "wb") as out_f:
+        content = await file.read()
+        await out_f.write(content)
+        file_size = len(content)
+
+    thumb_filename = f"{video_id}.jpg"
+    thumb_path = THUMBS_DIR / thumb_filename
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-i", str(file_path),
+            "-ss", "00:00:02", "-vframes", "1",
+            "-vf", "scale=400:-1", str(thumb_path),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            print(f"FFMPEG Error: {stderr.decode()}")
+            thumb_filename = ""
+    except Exception as e:
+        print(f"Error creating thumbnail: {e}")
+        thumb_filename = ""
+
+    db = next(get_db())
+    cursor = db.cursor()
+    cursor.execute(
+        """
+        INSERT INTO videos (id, original_filename, saved_filename, thumb_filename, created_at, ttl_days, ip_address, question, size_bytes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            video_id,
+            file.filename,
+            saved_filename,
+            thumb_filename,
+            time.time(),
+            int(ttl),
+            request.client.host,
+            question,
+            file_size
+        )
+    )
+    db.commit()
+
+    add_upload_to_session(request, video_id)
+    return video_id
+
+# --- ЭНДПОИНТЫ (Маршруты) ---
 
 @app.get("/", response_class=HTMLResponse)
-async def list_videos():
-    video_list_html = ""
-    for file in Path("videos").iterdir():
-        name = file.name
-        thumb = f"/thumbnails/{name}.jpg"
-        video_link = f"/videos/{name}"
-        delete_form = f"""
-            <form action="/delete/{name}" method="post" style="display:inline;">
-                <button class="delete-btn" type="submit">🗑 Удалить</button>
-            </form>
-        """
-        video_list_html += f"""
-        <div class="card">
-            <img src="{thumb}" alt="превью" class="thumb">
-            <div class="info">
-                <p><strong>{name}</strong></p>
-                <a href="{video_link}" target="_blank" class="watch-btn">▶ Смотреть</a>
-                {delete_form}
-            </div>
-        </div>
-        """
+async def main_landing(request: Request):
+    lang = get_lang(request)
+    # Предполагается, что в static лежат картинки 1.jpg, 2.jpg, 3.jpg
+    bg_list = ["1.jpg", "2.jpg", "3.jpg"]
+    bg_idx = int(time.time()) % len(bg_list)
+    context = {
+        "request": request,
+        "tr": translations.get(lang, translations[DEFAULT_LANG]),
+        "langs": LANGS,
+        "lang": lang,
+        "bg_url": f"/static/{bg_list[bg_idx]}"
+    }
+    response = templates.TemplateResponse("index.html", context)
+    set_lang_cookie(response, lang)
+    return response
 
-    return f"""
-    <html>
-    <head>
-        <title>Мой Видеообменник</title>
-        <style>
-            body {{
-                font-family: 'Segoe UI', sans-serif;
-                background: #f4f4f4;
-                padding: 20px;
-                max-width: 800px;
-                margin: auto;
-            }}
-            h1 {{
-                text-align: center;
-                color: #333;
-            }}
-            a.button {{
-                display: inline-block;
-                padding: 10px 16px;
-                background: #007bff;
-                color: #fff;
-                text-decoration: none;
-                border-radius: 8px;
-                margin-bottom: 20px;
-                transition: background 0.3s;
-            }}
-            a.button:hover {{
-                background: #0056b3;
-            }}
-            .card {{
-                background: #fff;
-                border-radius: 12px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-                padding: 16px;
-                margin-bottom: 20px;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-            }}
-            .thumb {{
-                max-width: 100%;
-                border-radius: 10px;
-                margin-bottom: 12px;
-            }}
-            .info {{
-                text-align: center;
-            }}
-            .watch-btn {{
-                padding: 8px 14px;
-                background: #28a745;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                text-decoration: none;
-                margin-right: 10px;
-            }}
-            .watch-btn:hover {{
-                background: #218838;
-            }}
-            .delete-btn {{
-                padding: 8px 14px;
-                background: #dc3545;
-                color: white;
-                border: none;
-                border-radius: 6px;
-                cursor: pointer;
-            }}
-            .delete-btn:hover {{
-                background: #c82333;
-            }}
-            @media (max-width: 600px) {{
-                body {{
-                    padding: 10px;
-                }}
-                .card {{
-                    padding: 12px;
-                }}
-            }}
-        </style>
-    </head>
-    <body>
-        <h1>🎥 Видеообменник</h1>
-        <div style="text-align:center;">
-            <a href="/upload" class="button">➕ Загрузить новое видео</a>
-        </div>
-        {video_list_html if video_list_html else '<p style="text-align:center;">Нет загруженных видео.</p>'}
-    </body>
-    </html>
-    """
-
-
-@app.get("/upload", response_class=HTMLResponse)
-async def upload_form():
-    return """
-    <html>
-    <head>
-        <title>Загрузка видео</title>
-        <style>
-            body {
-                font-family: 'Segoe UI', sans-serif;
-                background: #f4f4f4;
-                text-align: center;
-                padding: 40px;
-            }
-            form {
-                background: white;
-                display: inline-block;
-                padding: 30px;
-                border-radius: 10px;
-                box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-            }
-            input[type="file"] {
-                margin-bottom: 20px;
-            }
-            input[type="submit"] {
-                padding: 10px 16px;
-                background: #007bff;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                cursor: pointer;
-            }
-            input[type="submit"]:hover {
-                background: #0056b3;
-            }
-            a {
-                display: block;
-                margin-top: 20px;
-                text-decoration: none;
-                color: #007bff;
-            }
-        </style>
-    </head>
-    <body>
-        <form action="/upload" enctype="multipart/form-data" method="post">
-            <h2>Загрузить видео</h2>
-            <input name="file" type="file" accept="video/*" required><br>
-            <input type="submit" value="Загрузить">
-            <a href="/">⬅ Назад к списку</a>
-        </form>
-    </body>
-    </html>
-    """
-
+@app.get("/send", response_class=HTMLResponse)
+async def send_page(request: Request):
+    lang = get_lang(request)
+    context = {"request": request, "tr": translations.get(lang, translations[DEFAULT_LANG]), "lang": lang}
+    return templates.TemplateResponse("send.html", context)
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
-    file_location = Path("videos") / file.filename
-    with open(file_location, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+async def upload_video(request: Request, file: UploadFile = File(...), ttl: int = Form(...)):
+    lang = get_lang(request)
+    if len(get_user_uploads(request)) >= MAX_UPLOADS:
+        return HTMLResponse(f"<script>alert('{translations[lang]['limit_reached']}'); window.location.href='/?lang={lang}';</script>")
 
-    # Генерация превью
-    thumb_path = Path("thumbnails") / f"{file.filename}.jpg"
-    subprocess.run([
-        "ffmpeg",
-        "-i", str(file_location),
-        "-ss", "00:00:01.000",
-        "-vframes", "1",
-        "-q:v", "2",
-        str(thumb_path)
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    await process_and_save_video(request, file, ttl)
+    return RedirectResponse(url=f"/list?lang={lang}", status_code=303)
 
-    return RedirectResponse("/", status_code=303)
+@app.get("/list", response_class=HTMLResponse)
+async def list_videos(request: Request, db: sqlite3.Connection = Depends(get_db)):
+    lang = get_lang(request)
+    user_uploads_ids = get_user_uploads(request)
+    
+    videos = []
+    if user_uploads_ids:
+        placeholders = ','.join('?' for _ in user_uploads_ids)
+        cursor = db.cursor()
+        cursor.execute(f"SELECT id, saved_filename FROM videos WHERE id IN ({placeholders}) ORDER BY created_at DESC", user_uploads_ids)
+        videos = cursor.fetchall()
+
+    context = {
+        "request": request,
+        "tr": translations.get(lang, translations[DEFAULT_LANG]),
+        "lang": lang,
+        "videos": videos,
+        "host": request.url.netloc,
+        "scheme": request.url.scheme
+    }
+    return templates.TemplateResponse("list.html", context)
+
+@app.post("/delete")
+async def delete_video(request: Request, id: str = Form(...), db: sqlite3.Connection = Depends(get_db)):
+    lang = get_lang(request)
+    user_uploads_ids = get_user_uploads(request)
+
+    if id in user_uploads_ids:
+        cursor = db.cursor()
+        cursor.execute("SELECT saved_filename, thumb_filename FROM videos WHERE id = ?", (id,))
+        record = cursor.fetchone()
+
+        if record:
+            import aiofiles.os
+            try:
+                if record["saved_filename"]: await aiofiles.os.remove(VIDEOS_DIR / record["saved_filename"])
+                if record["thumb_filename"]: await aiofiles.os.remove(THUMBS_DIR / record["thumb_filename"])
+            except OSError as e:
+                print(f"Error deleting files for video {id}: {e}")
+
+            cursor.execute("DELETE FROM videos WHERE id = ?", (id,))
+            db.commit()
+            remove_upload_from_session(request, id)
+    
+    return RedirectResponse(url=f"/list?lang={lang}", status_code=303)
+
+@app.get("/record", response_class=HTMLResponse)
+async def record_page(request: Request):
+    lang = get_lang(request)
+    context = {"request": request, "tr": translations.get(lang, translations[DEFAULT_LANG]), "lang": lang}
+    return templates.TemplateResponse("record.html", context)
+
+@app.post("/record_upload")
+async def record_upload(request: Request, file: UploadFile = File(...), ttl: int = Form(...)):
+    lang = get_lang(request)
+    await process_and_save_video(request, file, ttl)
+    return RedirectResponse(url=f"/list?lang={lang}", status_code=303)
+
+@app.get("/f2f", response_class=HTMLResponse)
+async def f2f_page(request: Request):
+    lang = get_lang(request)
+    context = {"request": request, "tr": translations.get(lang, translations[DEFAULT_LANG]), "lang": lang}
+    return templates.TemplateResponse("f2f.html", context)
+
+@app.post("/f2f_upload")
+async def f2f_upload(request: Request, file: UploadFile = File(...), ttl: int = Form(...), question: str = Form("")):
+    lang = get_lang(request)
+    await process_and_save_video(request, file, ttl, question)
+    return RedirectResponse(url=f"/list?lang={lang}", status_code=303)
 
 
-@app.post("/delete/{filename}")
-async def delete_video(filename: str):
-    video_path = Path("videos") / filename
-    thumb_path = Path("thumbnails") / f"{filename}.jpg"
-    if video_path.exists():
-        video_path.unlink()
-    if thumb_path.exists():
-        thumb_path.unlink()
-    return RedirectResponse("/", status_code=303)
+@app.get("/stat", response_class=HTMLResponse)
+async def show_stats(request: Request, db: sqlite3.Connection = Depends(get_db)):
+    lang = get_lang(request)
+    tr = translations.get(lang, translations[DEFAULT_LANG])
+    cursor = db.cursor()
+    
+    cursor.execute("SELECT COUNT(*), SUM(size_bytes), AVG(ttl_days) FROM videos")
+    count, total_size, avg_ttl = cursor.fetchone()
+    
+    stats = {
+        tr["stat_total_videos"]: count or 0,
+        tr["stat_total_size"]: round(total_size / (1024*1024), 2) if total_size else 0,
+        tr["stat_avg_ttl"]: round(avg_ttl, 1) if avg_ttl else 0
+    }
+    
+    context = {"request": request, "tr": tr, "lang": lang, "stats": stats}
+    return templates.TemplateResponse("stat.html", context)
+
+
+@app.get("/feedback", response_class=HTMLResponse)
+async def feedback_page(request: Request):
+    lang = get_lang(request)
+    context = {"request": request, "tr": translations.get(lang, translations[DEFAULT_LANG]), "lang": lang}
+    return templates.TemplateResponse("feedback.html", context)
+
+# --- СТАТИКА И МЕДИА ---
+app.mount("/videos", StaticFiles(directory=VIDEOS_DIR), name="videos")
+app.mount("/thumbnails", StaticFiles(directory=THUMBS_DIR), name="thumbnails")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+# --- ЗАПУСК ПРИЛОЖЕНИЯ ---
+if __name__ == "__main__":
+    import uvicorn
+    print("Initializing database...")
+    init_db()
+    print("Starting server...")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
