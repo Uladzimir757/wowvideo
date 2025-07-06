@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Videochat (WebRTC, Room)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-blue-100 to-pink-200">
+  <div class="bg-white p-8 rounded-xl shadow-xl w-full max-w-lg text-center">
+    <h1 class="text-2xl font-bold mb-4">Онлайн-видеочат по комнате</h1>
+    <input id="room" type="text" placeholder="Введите имя комнаты" class="border p-2 rounded mb-2 w-1/2"/>
+    <button id="joinBtn" class="bg-blue-600 text-white px-4 py-2 rounded mb-4 ml-2">Войти</button>
+    <div id="chatArea" style="display:none;">
+      <div class="flex gap-4 justify-center mb-4">
+        <video id="localVideo" autoplay muted playsinline class="rounded-lg border"></video>
+        <video id="remoteVideo" autoplay playsinline class="rounded-lg border"></video>
+      </div>
+      <button id="startBtn" class="bg-green-600 text-white px-4 py-2 rounded">Начать звонок</button>
+      <button id="hangupBtn" class="bg-gray-400 text-white px-4 py-2 rounded ml-2" disabled>Завершить</button>
+    </div>
+  </div>
+<script>
+let ws, pc, localStream;
+let started = false;
+
+document.getElementById('joinBtn').onclick = function() {
+  const room = document.getElementById('room').value.trim();
+  if (!room) return alert("Укажите комнату!");
+  ws = new WebSocket("ws://" + window.location.host + "/ws/" + encodeURIComponent(room));
+  ws.onmessage = async (evt) => {
+    let msg = JSON.parse(evt.data);
+    if (msg.sdp) {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+      if (msg.sdp.type === "offer") {
+        let answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({sdp: pc.localDescription}));
+      }
+    }
+    if (msg.candidate) {
+      await pc.addIceCandidate(msg.candidate);
+    }
+  };
+  document.getElementById('chatArea').style.display = '';
+};
+
+document.getElementById('startBtn').onclick = async function () {
+  if (started) return;
+  pc = new RTCPeerConnection();
+  pc.onicecandidate = (event) => {
+    if (event.candidate) ws.send(JSON.stringify({candidate: event.candidate}));
+  };
+  pc.ontrack = (event) => {
+    document.getElementById('remoteVideo').srcObject = event.streams[0];
+  };
+  localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
+  document.getElementById('localVideo').srcObject = localStream;
+  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  let offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  ws.send(JSON.stringify({sdp: pc.localDescription}));
+  started = true;
+  document.getElementById('hangupBtn').disabled = false;
+};
+
+document.getElementById('hangupBtn').onclick = function () {
+  if (ws) ws.close();
+  if (pc) pc.close();
+  started = false;
+  document.getElementById('hangupBtn').disabled = true;
+};
+</script>
+</body>
+</html>

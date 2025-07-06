@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+starlette
+aiofiles
+python-multipart
+geoip2
