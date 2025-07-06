@@ -1,6 +1,7 @@
 fastapi
 uvicorn
-starlette
-aiofiles
+itsdangerous
 python-multipart
 geoip2
+aiofiles
+
