@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tr.record }}{% endblock %}
+
+{% block body_class %}min-h-screen flex flex-col justify-center items-center bg-gradient-to-tr from-green-200 to-blue-300{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md text-center">
+    <h2 class="text-2xl font-bold mb-4">{{ tr.record }}</h2>
+    <video id="recvideo" width="400" autoplay muted class="rounded mb-4 bg-black mx-auto"></video>
+    <div id="rec-controls" class="mb-4">
+      <button id="rec-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-full shadow font-bold transition-transform transform hover:scale-105">{{ tr.record_btn }}</button>
+      <button id="stop-btn" class="bg-red-500 hover:bg-red-600 text-white px-5 py-2 rounded-full shadow font-bold ml-2" style="display:none">{{ tr.stop_btn }}</button>
+    </div>
+    <form id="send-form" method="post" action="/record_upload?lang={{ lang }}" style="display:none;">
+      <input type="hidden" name="ttl" value="7">
+    </form>
+    <div class="mt-4">
+      <a href="/?lang={{ lang }}" class="text-blue-600 hover:underline">{{ tr.mainpage }}</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/recorder.js" defer></script>
+{% endblock %}

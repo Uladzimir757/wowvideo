@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tr.title }}{% endblock %}
+
+{% block body_class %}min-h-screen flex flex-col justify-center items-center p-4{% endblock %}
+
+{% block content %}
+<div class="absolute top-0 left-0 w-full h-full bg-center bg-cover -z-10" style="background-image: url('{{ bg_url }}')"></div>
+<div class="relative bg-white/80 rounded-xl shadow-lg p-8 w-full max-w-md text-center">
+  <h1 class="text-3xl font-bold mb-4">{{ tr.title }}</h1>
+  <div class="mb-4 text-gray-700">{{ tr.without_reg | capitalize }}</div>
+  <div class="mb-4 flex flex-col gap-3">
+    <a href="/send?lang={{ lang }}" class="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-2 transition-colors">{{ tr.upload }}</a>
+    <a href="/record?lang={{ lang }}" class="bg-green-600 hover:bg-green-700 text-white rounded px-4 py-2 transition-colors">{{ tr.record }}</a>
+    <a href="/f2f?lang={{ lang }}" class="bg-pink-600 hover:bg-pink-700 text-white rounded px-4 py-2 transition-colors">{{ tr.f2f }}</a>
+    <a href="/stat?lang={{ lang }}" class="bg-gray-600 hover:bg-gray-700 text-white rounded px-4 py-2 transition-colors">{{ tr.stat }}</a>
+  </div>
+  <div class="mb-2 text-xs text-gray-500 space-x-2">
+    {% for code, name in langs.items() %}
+      <a href="?lang={{ code }}" class="{% if code == lang %}font-bold text-blue-700{% else %}hover:underline{% endif %}">{{ name }}</a>
+    {% endfor %}
+  </div>
+  <div class="mt-6">
+    <a href="/feedback?lang={{ lang }}" class="text-blue-600 hover:underline">{{ tr.feedback }}</a>
+  </div>
+</div>
+{% endblock %}

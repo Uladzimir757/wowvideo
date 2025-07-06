@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tr.your_videos }}{% endblock %}
+
+{% block body_class %}bg-gray-50 min-h-screen py-8{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto">
+    <h2 class="text-2xl font-bold mb-6 text-center">{{ tr.your_videos }}</h2>
+
+    {% if videos %}
+        <div class="space-y-8">
+        {% for v in videos %}
+            <div class="bg-white p-4 rounded-lg shadow-md text-center">
+                <video src="/videos/{{ v.saved_filename }}" controls class="max-w-full rounded mb-3 w-full"></video>
+                <div class="flex justify-center items-center gap-2">
+                    <button onclick="navigator.clipboard.writeText('{{ scheme }}://{{ host }}/videos/{{ v.saved_filename }}').then(() => alert('{{ tr.copied }}'))" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded transition-colors">
+                        {{ tr.copy }}
+                    </button>
+                    <form style="display:inline" method="post" action="/delete?lang={{ lang }}">
+                        <input type="hidden" name="id" value="{{ v.id }}">
+                        <button type="submit" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded transition-colors">
+                            {{ tr.delete }}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    {% else %}
+        <div class='text-center text-gray-500 p-8 bg-white rounded-lg shadow-md'>
+            {{ tr.no_videos }}
+        </div>
+    {% endif %}
+
+    <div class="mt-8 text-center">
+        <a href="/?lang={{ lang }}" class="text-blue-600 hover:underline">{{ tr.mainpage }}</a>
+    </div>
+</div>
+{% endblock %}

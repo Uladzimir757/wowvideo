@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tr.feedback }}{% endblock %}
+
+{% block body_class %}min-h-screen flex flex-col justify-center items-center bg-gray-50{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md text-center">
+    <h2 class="text-2xl font-bold mb-4">{{ tr.feedback }}</h2>
+    <p class="mb-4 text-gray-700">
+        Email for contact:<br>
+        <a href="mailto:wowvideoko@gmail.com" class="text-blue-600 hover:underline">wowvideoko@gmail.com</a>
+    </p>
+    <div class="mt-6">
+        <a href="/?lang={{ lang }}" class="text-blue-600 hover:underline">{{ tr.mainpage }}</a>
+    </div>
+</div>
+{% endblock %}
