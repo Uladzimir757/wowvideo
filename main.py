@@ -747,7 +747,9 @@ async def main_landing(request: Request):
         document.getElementById('joinBtn').onclick = function() {{
             const room = document.getElementById('room').value.trim();
             if (!room) return alert("{tr['enter_room_alert']}");
-            ws = new WebSocket("ws://" + window.location.host + "/ws/" + encodeURIComponent(room));
+           let wsProtocol = window.location.protocol === "https:" ? "wss://" : "ws://";
+            ws = new WebSocket(wsProtocol + window.location.host + "/ws/" + encodeURIComponent(room));
+
             ws.onmessage = async (evt) => {{
                 let msg = JSON.parse(evt.data);
                 if (msg.sdp) {{
