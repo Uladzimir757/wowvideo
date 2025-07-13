@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+
+<head>
+  <meta charset="utf-8" />
+  <title>{{ tr.videos }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="min-h-screen flex items-center justify-center bg-cover bg-center"
+  style="background-image:url('/static/img/5.jpg')">
+
+  <body lang="{{ lang }}">
+
+    <!-- 1) Переключатель языка -->
+    <div class="absolute top-4 right-4 space-x-2 z-50">
+      {% for code in ['en','ru','pl','uk'] %}
+      <a href="?lang={{ code }}{% if request.query_params.page %}&page={{ request.query_params.page }}{% endif %}"
+        class="px-2 py-1 bg-white bg-opacity-75 rounded hover:bg-opacity-100">
+        {{ code|upper }}
+      </a>
+      {% endfor %}
+    </div>
+
+    <!-- 2) Уведомление о правилах -->
+    <div id="legalNotice" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-white bg-opacity-90 text-gray-800 text-sm
+              rounded-lg px-4 py-2 shadow pointer-events-auto max-w-xl text-center border border-gray-300
+              backdrop-blur">
+      {{ tr.legal_notice }}
+      <button onclick="document.getElementById('legalNotice').style.display='none';"
+        class="ml-4 text-blue-700 underline">
+        {{ tr.hide_notice }}
+      </button>
+    </div>
+
+    <!-- 3) Кнопка "На главную" (обычно под контентом или в шапке) -->
+    <div class="absolute top-4 left-4 z-50">
+      <a href="/?lang={{ lang }}" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">
+        {{ tr.back }}
+      </a>
+    </div>
+    <div class="bg-white p-8 rounded-lg shadow-lg text-center space-y-4 max-w-md">
+      <h1 class="text-2xl font-bold">{{ tr.videos }}</h1>
+      {% if videos %}
+      <ul class="list-disc list-inside text-left">
+        {% for v in videos %}
+        <li class="flex justify-between items-center">
+          <a href="/uploads/{{v}}" class="text-blue-600 hover:underline" target="_blank">{{ v }}</a>
+          <button onclick="fetch('/videos/{{v}}?lang={{lang}}',{method:'DELETE'}).then(()=>location.reload())"
+            class="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded">
+            {{ tr.delete }}
+          </button>
+
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p>{{ tr.no_videos }}</p>
+      {% endif %}
+      <div class="mt-6 text-center">
+        <a href="/?lang={{ lang }}" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+          {{ tr.back }}
+        </a>
+      </div>
+      <div class="mt-4 text-center text-sm text-gray-700">
+        {{ tr.contact_label }}:
+        <a href="mailto:wowvideoko@gmail.com" class="text-blue-600 hover:underline">
+          wowvideoko@gmail.com
+        </a>
+      </div>
+    </div>
+  </body>
+
+</html>

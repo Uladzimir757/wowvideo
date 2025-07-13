@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+
+<head>
+  <meta charset="utf-8" />
+  <title>{{ tr.record }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="min-h-screen flex items-center justify-center bg-cover bg-center"
+  style="background-image:url('/static/img/3.jpg')">
+
+  <body lang="{{ lang }}">
+
+    <!-- 1) Переключатель языка -->
+    <div class="absolute top-4 right-4 space-x-2 z-50">
+      {% for code in ['en','ru','pl','uk'] %}
+      <a href="?lang={{ code }}{% if request.query_params.page %}&page={{ request.query_params.page }}{% endif %}"
+        class="px-2 py-1 bg-white bg-opacity-75 rounded hover:bg-opacity-100">
+        {{ code|upper }}
+      </a>
+      {% endfor %}
+    </div>
+
+    <!-- 2) Уведомление о правилах -->
+    <div id="legalNotice" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-white bg-opacity-90 text-gray-800 text-sm
+              rounded-lg px-4 py-2 shadow pointer-events-auto max-w-xl text-center border border-gray-300
+              backdrop-blur">
+      {{ tr.legal_notice }}
+      <button onclick="document.getElementById('legalNotice').style.display='none';"
+        class="ml-4 text-blue-700 underline">
+        {{ tr.hide_notice }}
+      </button>
+    </div>
+
+    <!-- 3) Кнопка "На главную" (обычно под контентом или в шапке) -->
+    <div class="absolute top-4 left-4 z-50">
+      <a href="/?lang={{ lang }}" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">
+        {{ tr.back }}
+      </a>
+    </div>
+    <div class="bg-white p-8 rounded-lg shadow-lg text-center space-y-4 max-w-md">
+      <h1 class="text-2xl font-bold">{{ tr.record }}</h1>
+      <form id="f2fform" method="post" enctype="multipart/form-data" action="/f2f_upload?lang={{lang}}">
+        <textarea name="question" rows="2" required class="w-full border p-2 rounded"
+          placeholder="{{ tr.enter_room }}"></textarea>
+        <video id="f2fvideo" autoplay muted class="rounded border w-full h-48 my-2"></video>
+        <input type="file" id="f2fblobfile" name="file" hidden required>
+        <div>
+          <button id="f2f-rec-btn" type="button" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+            {{ tr.record }}
+          </button>
+          <button id="f2f-stop-btn" type="button" hidden class="bg-gray-400 text-white px-4 py-2 rounded ml-2">
+            {{ tr.stop }}
+          </button>
+        </div>
+        <button id="f2f-send-btn" type="submit" hidden
+          class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
+          {{ tr.send }}
+        </button>
+        <div class="mt-6 text-center">
+          <a href="/?lang={{ lang }}" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+            {{ tr.back }}
+          </a>
+          <div class="mt-4 text-center text-sm text-gray-700">
+            {{ tr.contact_label }}:
+            <a href="mailto:wowvideoko@gmail.com" class="text-blue-600 hover:underline">
+              wowvideoko@gmail.com
+            </a>
+          </div>
+        </div>
+      </form>
+    </div>
+    <script src="/static/js/f2f-recorder.js"></script>
+  </body>
+
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+
+<head>
+  <meta charset="utf-8" />
+  <title>{{ tr.f2f }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="min-h-screen flex flex-col items-center justify-center bg-cover bg-center"
+  style="background-image:url('/static/img/2.jpg')" data-tr='{{ tr_json|safe }}'>
+
+  <body lang="{{ lang }}">
+
+    <!-- 1) Переключатель языка -->
+    <div class="absolute top-4 right-4 space-x-2 z-50">
+      {% for code in ['en','ru','pl','uk'] %}
+      <a href="?lang={{ code }}{% if request.query_params.page %}&page={{ request.query_params.page }}{% endif %}"
+        class="px-2 py-1 bg-white bg-opacity-75 rounded hover:bg-opacity-100">
+        {{ code|upper }}
+      </a>
+      {% endfor %}
+    </div>
+
+    <!-- 2) Уведомление о правилах -->
+    <div id="legalNotice" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-white bg-opacity-90 text-gray-800 text-sm
+              rounded-lg px-4 py-2 shadow pointer-events-auto max-w-xl text-center border border-gray-300
+              backdrop-blur">
+      {{ tr.legal_notice }}
+      <button onclick="document.getElementById('legalNotice').style.display='none';"
+        class="ml-4 text-blue-700 underline">
+        {{ tr.hide_notice }}
+      </button>
+    </div>
+
+    <!-- 3) Кнопка "На главную" (обычно под контентом или в шапке) -->
+    <div class="absolute top-4 left-4 z-50">
+      <a href="/?lang={{ lang }}" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">
+        {{ tr.back }}
+      </a>
+    </div>
+    <div class="bg-white p-8 rounded-lg shadow-lg text-center space-y-4 max-w-lg">
+      <h1 class="text-2xl font-bold">{{ tr.f2f }}</h1>
+      <div>
+        <input id="room" type="text" placeholder="{{ tr.enter_room }}" class="border p-2 rounded w-2/3" />
+        <button id="joinBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded ml-2">
+          {{ tr.join }}
+        </button>
+      </div>
+      <div>
+        <input id="invite-link" readonly class="border p-1 rounded w-2/3 inline" />
+        <button onclick="copyInvite()" class="bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded ml-1">
+          {{ tr.copy_link }}
+        </button>
+        <div class="mt-6 text-center">
+          <a href="/?lang={{ lang }}" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+            {{ tr.back }}
+          </a>
+          <div class="mt-4 text-center text-sm text-gray-700">
+            {{ tr.contact_label }}:
+            <a href="mailto:wowvideoko@gmail.com" class="text-blue-600 hover:underline">
+              wowvideoko@gmail.com
+            </a>
+          </div>
+        </div>
+      </div>
+      <div id="chatArea" class="space-y-4" style="display:none;">
+        <div class="flex gap-4">
+          <video id="localVideo" autoplay muted class="rounded border w-1/2"></video>
+          <video id="remoteVideo" autoplay class="rounded border w-1/2"></video>
+        </div>
+        <button id="startBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">
+          {{ tr.start_call }}
+        </button>
+        <button id="hangupBtn" disabled class="bg-gray-400 text-white px-4 py-2 rounded">
+          {{ tr.end_call }}
+        </button>
+      </div>
+    </div>
+    <script>
+      window.tr = JSON.parse(document.body.dataset.tr);
+    </script>
+    <script src="/static/js/f2f.js"></script>
+  </body>
+
+</html>
