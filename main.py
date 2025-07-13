@@ -8,8 +8,13 @@ from datetime import datetime
 import json, shutil
 from uuid import uuid4
 
-BASE_DIR = Path(__file__).resolve().parent           # это /opt/render/project/src
-TEMPLATES_DIR = BASE_DIR.parent / "templates"  
+BASE_DIR      = Path(__file__).resolve().parent          # .../project/src
+PARENT_DIR    = BASE_DIR.parent                           # .../project
+TEMPLATES_DIR = BASE_DIR / "templates"                    # .../project/src/templates
+if not TEMPLATES_DIR.exists():
+    TEMPLATES_DIR = PARENT_DIR / "templates"              # .../project/templates
+
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))  
 STATIC    = BASE_DIR  / "static"
 JS_DIR    = STATIC / "js"
 IMG_DIR   = STATIC / "img"
