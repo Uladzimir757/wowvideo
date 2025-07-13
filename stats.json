@@ -1,0 +1,24 @@
+{
+  "uploads": 2,
+  "countries": {
+    "Unknown": 2
+  },
+  "/": {
+    "count": 175,
+    "last_visit": "2025-07-10T20:39:57.210418",
+    "last": "2025-07-13T14:04:57.107654"
+  },
+  "/.well-known/appspecific/com.chrome.devtools.json": {
+    "count": 49,
+    "last_visit": "2025-07-10T20:39:57.483553",
+    "last": "2025-07-11T23:51:45.366185"
+  },
+  "/upload": {
+    "count": 4,
+    "last_visit": "2025-07-09T20:15:14.788669"
+  },
+  "/favicon.ico": {
+    "count": 5,
+    "last": "2025-07-13T11:30:16.108771"
+  }
+}

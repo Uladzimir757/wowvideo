@@ -1,0 +1,614 @@
+import os
+import shutil
+import json
+import time
+from uuid import uuid4
+from pathlib import Path
+from fastapi import FastAPI, Request, Form, File, UploadFile, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
+import subprocess
+
+app = FastAPI()
+app.add_middleware(SessionMiddleware, secret_key="wowvideo_secret_key_2024")
+
+BASE_DIR = Path(__file__).parent
+VIDEOS_DIR = BASE_DIR / "videos"
+THUMBS_DIR = BASE_DIR / "thumbnails"
+STATIC_DIR = BASE_DIR / "static"
+META_FILE = BASE_DIR / "videos.json"
+
+VIDEOS_DIR.mkdir(exist_ok=True)
+THUMBS_DIR.mkdir(exist_ok=True)
+STATIC_DIR.mkdir(exist_ok=True)
+if not META_FILE.exists():
+    META_FILE.write_text("[]", encoding="utf-8")
+
+LANGS = {
+    "en": "English",
+    "ru": "Русский",
+    "uk": "Українська",
+    "pl": "Polski",
+}
+DEFAULT_LANG = "en"
+MAX_UPLOADS = 5
+
+translations = {
+    "en": {
+        "title": "Video Share",
+        "upload": "Upload Video",
+        "record": "Record Video",
+        "f2f": "Interview (F2F)",
+        "stat": "Statistics",
+        "feedback": "Feedback",
+        "lang": "Language",
+        "mainpage": "Main Page",
+        "select_file": "Select video file",
+        "ttl": "Storage (hours)",
+        "upload_btn": "Upload",
+        "record_btn": "Start Recording",
+        "stop_btn": "Stop",
+        "send_record_btn": "Send Video",
+        "back_main": "Back to Main",
+        "your_videos": "Your Videos",
+        "copy": "Copy Link",
+        "delete": "Delete",
+        "copied": "Link copied!",
+        "no_videos": "No videos uploaded yet.",
+        "limit_reached": "Upload limit reached (max 5).",
+        "question": "Your question...",
+        "choose_lang": "Choose language:",
+        "without_reg": "without registration, without ads",
+        "subscribe": "Subscribe",
+    },
+    "ru": {
+        "title": "Видеообменник",
+        "upload": "Загрузить видео",
+        "record": "Записать видео",
+        "f2f": "Интервью (F2F)",
+        "stat": "Статистика",
+        "feedback": "Обратная связь",
+        "lang": "Язык",
+        "mainpage": "На главную",
+        "select_file": "Выберите видеофайл",
+        "ttl": "Время хранения (часов)",
+        "upload_btn": "Загрузить",
+        "record_btn": "Записать",
+        "stop_btn": "Стоп",
+        "send_record_btn": "Отправить видео",
+        "back_main": "На главную",
+        "your_videos": "Ваши видео",
+        "copy": "Копировать ссылку",
+        "delete": "Удалить",
+        "copied": "Ссылка скопирована!",
+        "no_videos": "Вы ещё не загрузили видео.",
+        "limit_reached": "Достигнут лимит загрузок (максимум 5).",
+        "question": "Ваш вопрос...",
+        "choose_lang": "Выберите язык:",
+        "without_reg": "без регистрации, без рекламы",
+        "subscribe": "Подписаться",
+    },
+    "uk": {
+        "title": "Відеообмінник",
+        "upload": "Завантажити відео",
+        "record": "Записати відео",
+        "f2f": "Інтерв'ю (F2F)",
+        "stat": "Статистика",
+        "feedback": "Зворотний зв'язок",
+        "lang": "Мова",
+        "mainpage": "На головну",
+        "select_file": "Виберіть відеофайл",
+        "ttl": "Час зберігання (годин)",
+        "upload_btn": "Завантажити",
+        "record_btn": "Записати",
+        "stop_btn": "Стоп",
+        "send_record_btn": "Відправити відео",
+        "back_main": "На головну",
+        "your_videos": "Ваші відео",
+        "copy": "Копіювати посилання",
+        "delete": "Видалити",
+        "copied": "Посилання скопійоване!",
+        "no_videos": "Ви ще не завантажили відео.",
+        "limit_reached": "Досягнуто ліміту завантажень (максимум 5).",
+        "question": "Ваше запитання...",
+        "choose_lang": "Оберіть мову:",
+        "without_reg": "без реєстрації, без реклами",
+        "subscribe": "Підписатися",
+    },
+    "pl": {
+        "title": "Wymiana Wideo",
+        "upload": "Wyślij wideo",
+        "record": "Nagraj wideo",
+        "f2f": "Wywiad (F2F)",
+        "stat": "Statystyki",
+        "feedback": "Kontakt",
+        "lang": "Język",
+        "mainpage": "Strona główna",
+        "select_file": "Wybierz plik wideo",
+        "ttl": "Czas przechowywania (godzin)",
+        "upload_btn": "Wyślij",
+        "record_btn": "Nagraj",
+        "stop_btn": "Stop",
+        "send_record_btn": "Wyślij wideo",
+        "back_main": "Powrót",
+        "your_videos": "Twoje filmy",
+        "copy": "Kopiuj link",
+        "delete": "Usuń",
+        "copied": "Skopiowano!",
+        "no_videos": "Jeszcze nie wysłałeś żadnych filmów.",
+        "limit_reached": "Osiągnięto limit (max 5).",
+        "question": "Twoje pytanie...",
+        "choose_lang": "Wybierz język:",
+        "without_reg": "bez rejestracji, bez reklam",
+        "subscribe": "Subskrybuj",
+    }
+}
+
+def get_lang(request: Request) -> str:
+    lang = request.query_params.get("lang")
+    if not lang or lang not in LANGS:
+        lang = request.cookies.get("lang", DEFAULT_LANG)
+    if lang not in LANGS:
+        lang = DEFAULT_LANG
+    return lang
+
+def url_with_lang(path: str, lang: str) -> str:
+    if "?" in path:
+        return f"{path}&lang={lang}"
+    return f"{path}?lang={lang}"
+
+def get_cookie_uploads(request: Request):
+    cookie = request.cookies.get("uploads")
+    if not cookie:
+        return []
+    try:
+        return json.loads(cookie)
+    except:
+        return []
+
+def set_cookie_uploads(resp: Response, uploads):
+    resp.set_cookie("uploads", json.dumps(uploads), max_age=60*60*24*60)
+
+@app.get("/", response_class=HTMLResponse)
+async def main_landing(request: Request):
+    lang = get_lang(request)
+    tr = translations[lang]
+    page = request.query_params.get("page", "")
+    if not page:
+        bg_list = ["1.jpg", "2.jpg", "3.jpg"]
+        bg_idx = int(time.time()) % 3
+        bg_url = f"/static/{bg_list[bg_idx]}"
+        langs_html = " | ".join([f"<a href='/?lang={l}'>{LANGS[l]}</a>" for l in LANGS])
+        return f"""
+        <html lang="{lang}">
+        <head>
+        <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+        <title>{tr['title']}</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        </head>
+        <body class="min-h-screen flex flex-col justify-center items-center" style="background: url('{bg_url}') center/cover;">
+            <div class="bg-white/80 rounded-xl shadow-lg p-8 w-full max-w-md text-center mt-8">
+                <h1 class="text-3xl font-bold mb-4">{tr['title']}</h1>
+                <div class="mb-4 text-gray-700">{tr['without_reg'].capitalize()}</div>
+                <div class="mb-4 flex flex-col gap-2">
+                    <a href='/?page=send&lang={lang}' class='bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-2'>{tr['upload']}</a>
+                    <a href='/?page=record&lang={lang}' class='bg-green-600 hover:bg-green-700 text-white rounded px-4 py-2'>{tr['record']}</a>
+                    <a href='/?page=f2f&lang={lang}' class='bg-pink-600 hover:bg-pink-700 text-white rounded px-4 py-2'>{tr['f2f']}</a>
+                    <a href='/?page=stat&lang={lang}' class='bg-gray-600 hover:bg-gray-700 text-white rounded px-4 py-2'>{tr['stat']}</a>
+                </div>
+                <div class="mb-2 text-xs text-gray-500">{tr['choose_lang']} {langs_html}</div>
+                <div class="mt-6"><a href='/?page=feedback&lang={lang}' class='text-blue-600 hover:underline'>{tr['feedback']}</a></div>
+            </div>
+        </body></html>
+        """
+    if page == "send":
+        return f"""
+        <html lang="{lang}">
+        <head>
+        <meta charset="utf-8">
+        <title>{tr['upload']}</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        </head>
+        <body class="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-blue-100 to-blue-200">
+            <form class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md text-center" method="post" enctype="multipart/form-data" action="/upload?lang={lang}">
+                <h2 class="text-2xl font-bold mb-4">{tr['upload']}</h2>
+                <input type="file" name="file" accept="video/*" class="mb-3" required><br>
+                <label class="block mb-2">{tr['ttl']}
+                <select name="ttl" class="border rounded px-2 w-28">
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="7" selected>7</option>
+                    <option value="12">12</option>
+                    <option value="24">24</option>
+                    <option value="48">48</option>
+                </select>
+                </label>
+                <button type="submit" class="bg-blue-700 text-white px-4 py-2 rounded">{tr['upload_btn']}</button>
+            </form>
+            <div class="mt-4"><a href='/?lang={lang}' class='text-blue-600 hover:underline'>{tr['mainpage']}</a></div>
+        </body></html>
+        """
+    if page == "feedback":
+        return f"""
+        <html lang="{lang}">
+        <head>
+        <meta charset="utf-8"><title>{tr['feedback']}</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        </head>
+        <body class="min-h-screen flex flex-col justify-center items-center bg-gray-50">
+            <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md text-center">
+                <h2 class="text-2xl font-bold mb-4">{tr['feedback']}</h2>
+                <p class="mb-4">Email: <a href="mailto:wowvideoko@gmail.com" class="text-blue-600 hover:underline">wowvideoko@gmail.com</a></p>
+                <div class="mt-6"><a href='/?lang={lang}' class='text-blue-600 hover:underline'>{tr['mainpage']}</a></div>
+            </div>
+        </body></html>
+        """
+    return RedirectResponse(f"/?lang={lang}", status_code=303)
+
+app.mount("/videos", StaticFiles(directory=VIDEOS_DIR), name="videos")
+app.mount("/thumbnails", StaticFiles(directory=THUMBS_DIR), name="thumbnails")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# Остальной код (загрузка, список, удаление, запись, интервью, статистика) высылаю ДОПОЛНИТЕЛЬНО, если этот кусок пройдёт без ошибок.
+from fastapi import status
+
+@app.post("/upload", response_class=HTMLResponse)
+async def upload_video(request: Request, file: UploadFile = File(...), ttl: int = Form(...)):
+    lang = get_lang(request)
+    tr = translations[lang]
+    uploads = get_cookie_uploads(request)
+    if len(uploads) >= MAX_UPLOADS:
+        return HTMLResponse(f"<script>alert('{tr['limit_reached']}');window.location='/?lang={lang}';</script>", status_code=status.HTTP_400_BAD_REQUEST)
+    id = str(uuid4())[:12]
+    filename = f"{id}_{file.filename.replace(' ', '_')}"
+    file_path = VIDEOS_DIR / filename
+    with open(file_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    # Превью через ffmpeg
+    thumb_name = f"{id}.jpg"
+    thumb_path = THUMBS_DIR / thumb_name
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-i", str(file_path),
+            "-ss", "00:00:02", "-vframes", "1",
+            "-vf", "scale=400:-1", str(thumb_path)
+        ], check=True)
+    except Exception:
+        thumb_name = ""
+    # Метаданные
+    if META_FILE.exists():
+        try:
+            meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+            if not isinstance(meta, list): meta = []
+        except: meta = []
+    else:
+        meta = []
+    meta.append({
+        "id": id,
+        "file": filename,
+        "filename": file.filename,
+        "thumb": thumb_name,
+        "created": time.time(),
+        "ttl": int(ttl),
+        "ip": request.client.host,
+    })
+    META_FILE.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    uploads.append(id)
+    resp = RedirectResponse(url_with_lang("/?page=list", lang), status_code=303)
+    set_cookie_uploads(resp, uploads)
+    return resp
+@app.get("/?page=list", response_class=HTMLResponse)
+async def my_videos(request: Request):
+    lang = get_lang(request)
+    tr = translations[lang]
+    uploads = get_cookie_uploads(request)
+    if META_FILE.exists():
+        try:
+            meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+        except:
+            meta = []
+    else:
+        meta = []
+    myvideos = [m for m in meta if m["id"] in uploads]
+    videos_html = ""
+    for v in myvideos:
+        url = f"/videos/{v['file']}"
+        thumb_url = f"/thumbnails/{v['thumb']}" if v.get('thumb') else ""
+        videos_html += f"""
+        <div class='bg-white rounded-lg shadow p-4 flex items-center mb-4'>
+          <img src='{thumb_url}' class='w-24 h-16 object-cover rounded mr-4' onerror="this.style.display='none'">
+          <div class='flex-1'>
+            <a href='{url}' target='_blank' class='font-bold text-blue-700 hover:underline'>{v["filename"]}</a>
+            <div class='text-xs text-gray-500 mb-2'>{time.strftime('%d.%m.%Y %H:%M', time.localtime(v["created"]))}</div>
+            <form action='/delete?lang={lang}' method='post' style='display:inline'>
+              <input type='hidden' name='id' value='{v["id"]}'>
+              <button type='submit' class='bg-red-500 hover:bg-red-700 text-white px-3 py-1 rounded text-xs ml-1'>{tr["delete"]}</button>
+            </form>
+          </div>
+        </div>
+        """
+    return f"""
+    <html><head><meta charset='utf-8'><title>{tr['your_videos']}</title>
+    <script src="https://cdn.tailwindcss.com"></script></head>
+    <body class="min-h-screen bg-gray-50 py-8">
+      <div class='max-w-xl mx-auto'>
+        <h2 class='text-2xl font-bold mb-6 text-center'>{tr['your_videos']}</h2>
+        {videos_html or f"<div class='text-center text-gray-500'>{tr['no_videos']}</div>"}
+        <div class='mt-8 text-center'><a href='/?lang={lang}' class='text-blue-600 hover:underline'>{tr['mainpage']}</a></div>
+      </div>
+    </body></html>
+    """
+@app.post("/delete", response_class=HTMLResponse)
+async def delete_video(request: Request, id: str = Form(...)):
+    lang = get_lang(request)
+    uploads = get_cookie_uploads(request)
+    if id not in uploads:
+        return RedirectResponse(url_with_lang("/?page=list", lang), status_code=303)
+    if META_FILE.exists():
+        try:
+            meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+        except:
+            meta = []
+    else:
+        meta = []
+    newmeta = []
+    for v in meta:
+        if v["id"] == id:
+            try:
+                (VIDEOS_DIR / v["file"]).unlink(missing_ok=True)
+                if v.get("thumb"):
+                    (THUMBS_DIR / v["thumb"]).unlink(missing_ok=True)
+            except:
+                pass
+        else:
+            newmeta.append(v)
+    META_FILE.write_text(json.dumps(newmeta, ensure_ascii=False, indent=2), encoding="utf-8")
+    uploads = [x for x in uploads if x != id]
+    resp = RedirectResponse(url_with_lang("/?page=list", lang), status_code=303)
+    set_cookie_uploads(resp, uploads)
+    return resp
+@app.get("/?page=record", response_class=HTMLResponse)
+async def record_page(request: Request):
+    lang = get_lang(request)
+    tr = translations[lang]
+    return f"""
+    <html lang="{lang}">
+    <head>
+    <meta charset="utf-8">
+    <title>{tr['record']}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="min-h-screen flex flex-col justify-center items-center bg-gradient-to-tr from-green-200 to-blue-300">
+      <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md text-center">
+        <h2 class="text-2xl font-bold mb-4">{tr['record']}</h2>
+        <video id="recvideo" width="320" height="240" autoplay muted class="rounded mb-2"></video>
+        <div id="rec-controls" class="mb-4">
+            <button id="rec-btn" class="bg-blue-600 text-white px-4 py-2 rounded shadow">{tr['record_btn']}</button>
+            <button id="stop-btn" class="bg-gray-400 text-white px-4 py-2 rounded shadow ml-2" style="display:none">{tr['stop_btn']}</button>
+        </div>
+        <form id="send-form" method="post" enctype="multipart/form-data" action="/record_upload?lang={lang}" style="display:none">
+            <input type="hidden" name="ttl" value="7">
+            <input type="hidden" name="filename" value="recorded.webm">
+            <input type="file" id="blobfile" name="file" style="display:none">
+            <button type="submit" class="bg-blue-700 text-white px-4 py-2 rounded">{tr['send_record_btn']}</button>
+        </form>
+        <div class="mt-6"><a href='/?lang={lang}' class='text-blue-600 hover:underline'>{tr['back_main']}</a></div>
+      </div>
+      <script>
+      let recbtn = document.getElementById('rec-btn');
+      let stopbtn = document.getElementById('stop-btn');
+      let video = document.getElementById('recvideo');
+      let form = document.getElementById('send-form');
+      let blobfile = document.getElementById('blobfile');
+      let stream, recorder, chunks = [];
+      recbtn.onclick = async function() {{
+          stream = await navigator.mediaDevices.getUserMedia({{video:true,audio:true}});
+          video.srcObject = stream;
+          recorder = new MediaRecorder(stream);
+          chunks = [];
+          recorder.ondataavailable = e => chunks.push(e.data);
+          recorder.onstop = e => {{
+              let blob = new Blob(chunks,{{type:"video/webm"}});
+              let file = new File([blob],"recorded.webm");
+              let dt = new DataTransfer();
+              dt.items.add(file);
+              blobfile.files = dt.files;
+              form.style.display = '';
+          }};
+          recorder.start();
+          recbtn.style.display='none'; stopbtn.style.display='';
+      }};
+      stopbtn.onclick = function() {{
+          recorder.stop();
+          stream.getTracks().forEach(t=>t.stop());
+          stopbtn.style.display='none';
+      }};
+      </script>
+    </body></html>
+    """
+@app.post("/record_upload", response_class=HTMLResponse)
+async def record_upload(request: Request, file: UploadFile = File(...), ttl: int = Form(...), filename: str = Form(...)):
+    lang = get_lang(request)
+    uploads = get_cookie_uploads(request)
+    if len(uploads) >= MAX_UPLOADS:
+        return RedirectResponse(url_with_lang("/", lang), status_code=303)
+    id = str(uuid4())[:12]
+    safe_fn = filename.replace(' ', '_')
+    file_path = VIDEOS_DIR / f"{id}_{safe_fn}"
+    with open(file_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    # Превью через ffmpeg
+    thumb_name = f"{id}.jpg"
+    thumb_path = THUMBS_DIR / thumb_name
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-i", str(file_path),
+            "-ss", "00:00:02", "-vframes", "1",
+            "-vf", "scale=400:-1", str(thumb_path)
+        ], check=True)
+    except Exception:
+        thumb_name = ""
+    # Метаданные
+    if META_FILE.exists():
+        try:
+            meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+            if not isinstance(meta, list): meta = []
+        except: meta = []
+    else:
+        meta = []
+    meta.append({
+        "id": id,
+        "file": f"{id}_{safe_fn}",
+        "filename": filename,
+        "thumb": thumb_name,
+        "created": time.time(),
+        "ttl": int(ttl),
+        "ip": request.client.host,
+    })
+    META_FILE.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    uploads.append(id)
+    resp = RedirectResponse(url_with_lang("/?page=list", lang), status_code=303)
+    set_cookie_uploads(resp, uploads)
+    return resp
+@app.get("/?page=f2f", response_class=HTMLResponse)
+async def f2f_page(request: Request):
+    lang = get_lang(request)
+    tr = translations[lang]
+    return f"""
+    <html lang="{lang}">
+    <head>
+    <meta charset="utf-8">
+    <title>{tr['f2f']}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="min-h-screen flex flex-col justify-center items-center bg-gradient-to-br from-pink-200 to-violet-200">
+      <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md text-center">
+        <h2 class="text-2xl font-bold mb-4">{tr['f2f']}</h2>
+        <form id="f2fform" method="post" enctype="multipart/form-data" action="/f2f_upload?lang={lang}">
+            <textarea name="question" rows="2" class="w-full border rounded p-2 mb-2" placeholder="{tr['question']}"></textarea>
+            <div>
+                <video id="f2fvideo" width="320" height="240" autoplay muted class="rounded mb-2"></video>
+            </div>
+            <input type="hidden" name="ttl" value="7">
+            <input type="hidden" name="filename" value="f2f.webm">
+            <input type="file" id="f2fblobfile" name="file" style="display:none">
+            <div class="mb-2">
+                <button id="f2f-rec-btn" type="button" class="bg-blue-600 text-white px-4 py-2 rounded">{tr['record_btn']}</button>
+                <button id="f2f-stop-btn" type="button" class="bg-gray-400 text-white px-4 py-2 rounded ml-2" style="display:none">{tr['stop_btn']}</button>
+            </div>
+            <button type="submit" id="f2f-send-btn" class="bg-blue-700 text-white px-4 py-2 rounded" style="display:none">{tr['send_record_btn']}</button>
+        </form>
+        <div class="mt-6"><a href='/?lang={lang}' class='text-blue-600 hover:underline'>{tr['back_main']}</a></div>
+      </div>
+      <script>
+      let recbtn=document.getElementById('f2f-rec-btn');
+      let stopbtn=document.getElementById('f2f-stop-btn');
+      let video=document.getElementById('f2fvideo');
+      let form=document.getElementById('f2fform');
+      let blobfile=document.getElementById('f2fblobfile');
+      let sendbtn=document.getElementById('f2f-send-btn');
+      let stream,recorder,chunks=[];
+      recbtn.onclick=async function(){{
+          stream=await navigator.mediaDevices.getUserMedia({{video:true,audio:true}});
+          video.srcObject=stream;
+          recorder=new MediaRecorder(stream);
+          chunks = [];
+          recorder.ondataavailable=e=>chunks.push(e.data);
+          recorder.onstop=e=>{
+              let blob=new Blob(chunks,{{type:"video/webm"}});
+              let file=new File([blob],"f2f.webm");
+              let dt=new DataTransfer();
+              dt.items.add(file);
+              blobfile.files=dt.files;
+              sendbtn.style.display='';
+          };
+          recorder.start();
+          recbtn.style.display='none';stopbtn.style.display='';
+      }};
+      stopbtn.onclick=function(){
+          recorder.stop();
+          stream.getTracks().forEach(t=>t.stop());
+          stopbtn.style.display='none';
+      };
+      </script>
+    </body></html>
+    """
+@app.post("/f2f_upload", response_class=HTMLResponse)
+async def f2f_upload(request: Request, file: UploadFile = File(...), ttl: int = Form(...), filename: str = Form(...), question: str = Form("")):
+    lang = get_lang(request)
+    uploads = get_cookie_uploads(request)
+    if len(uploads) >= MAX_UPLOADS:
+        return RedirectResponse(url_with_lang("/", lang), status_code=303)
+    id = str(uuid4())[:12]
+    safe_fn = filename.replace(' ', '_')
+    file_path = VIDEOS_DIR / f"{id}_{safe_fn}"
+    with open(file_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    # Превью через ffmpeg
+    thumb_name = f"{id}.jpg"
+    thumb_path = THUMBS_DIR / thumb_name
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-i", str(file_path),
+            "-ss", "00:00:02", "-vframes", "1",
+            "-vf", "scale=400:-1", str(thumb_path)
+        ], check=True)
+    except Exception:
+        thumb_name = ""
+    # Метаданные
+    if META_FILE.exists():
+        try:
+            meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+            if not isinstance(meta, list): meta = []
+        except: meta = []
+    else:
+        meta = []
+    meta.append({
+        "id": id,
+        "file": f"{id}_{safe_fn}",
+        "filename": filename,
+        "question": question,
+        "thumb": thumb_name,
+        "created": time.time(),
+        "ttl": int(ttl),
+        "ip": request.client.host,
+    })
+    META_FILE.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    uploads.append(id)
+    resp = RedirectResponse(url_with_lang("/?page=list", lang), status_code=303)
+    set_cookie_uploads(resp, uploads)
+    return resp
+@app.get("/?page=stat", response_class=HTMLResponse)
+async def show_stats(request: Request):
+    lang = get_lang(request)
+    tr = translations[lang]
+    try:
+        import geoip2.database
+        geo_reader = geoip2.database.Reader(str(BASE_DIR / "GeoLite2-Country.mmdb"))
+    except Exception:
+        geo_reader = None
+    stats = {}
+    if META_FILE.exists():
+        try:
+            meta = json.loads(META_FILE.read_text(encoding="utf-8"))
+        except:
+            meta = []
+    else:
+        meta = []
+    for v in meta:
+        ip = v.get("ip", "")
+        if geo_reader and ip:
+            try:
+                country = geo_reader.country(ip).country.name
+            except:
+                country = "Other"
+        else:
+            country = "Unknown"
+        stats[country] = stats.get(country, 0) + 1
+    stats_html = "<ul class='mb-4'>" + "".join(f"<li>{c}: {n}</li>" for c, n in sorted(stats.items(), key=lambda x: -x[1])) + "</ul>"
+    return f"""
+    <html><head><meta charset='utf-
+app.mount("/videos", StaticFiles(directory=VIDEOS_DIR), name="videos")
+app.mount("/thumbnails", StaticFiles(directory=THUMBS_DIR), name="thumbnails")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
