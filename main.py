@@ -8,15 +8,16 @@ from datetime import datetime
 import json, shutil
 from uuid import uuid4
 
-BASE      = Path(__file__).parent
-STATIC    = BASE / "static"
+BASE_DIR = Path(__file__).resolve().parent           # это /opt/render/project/src
+TEMPLATES_DIR = BASE_DIR.parent / "templates"  
+STATIC    = BASE_DIR  / "static"
 JS_DIR    = STATIC / "js"
 IMG_DIR   = STATIC / "img"
 UPLOADS   = STATIC / "uploads"
 RECORDS   = STATIC / "records"
-TEMPLATES = Jinja2Templates(directory=str(BASE / "templates"))
-STATS     = BASE / "stats.json"
-META      = BASE / "videos.json"
+TEMPLATES = Jinja2Templates(directory=str(TEMPLATES_DIR))
+STATS     = BASE_DIR  / "stats.json"
+META      = BASE_DIR  / "videos.json"
 
 # создаём папки и файлы
 for d in (STATIC, JS_DIR, IMG_DIR, UPLOADS, RECORDS):
