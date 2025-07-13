@@ -8,21 +8,42 @@ from datetime import datetime
 import json, shutil
 from uuid import uuid4
 
-BASE_DIR      = Path(__file__).resolve().parent          # .../project/src
-PARENT_DIR    = BASE_DIR.parent                           # .../project
-TEMPLATES_DIR = BASE_DIR / "templates"                    # .../project/src/templates
-if not TEMPLATES_DIR.exists():
-    TEMPLATES_DIR = PARENT_DIR / "templates"              # .../project/templates
+import sys
+from pathlib import Path
+from fastapi.templating import Jinja2Templates
 
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))  
-STATIC    = BASE_DIR  / "static"
+# 1) где находится main.py?
+BASE = Path(__file__).resolve().parent
+
+# 2) возможные каталоги с шаблонами
+candidates = [
+    BASE / "templates",         # project_root/templates
+    BASE / "src" / "templates", # project_root/src/templates
+    BASE.parent / "templates",  # если main.py лежит в src/
+]
+
+# 3) найдём первый, который реально существует
+for d in candidates:
+    if d.exists() and d.is_dir():
+        TPL_DIR = d
+        break
+else:
+    # ни один не найден — всё равно возьмём первый и дадим понять по логу
+    TPL_DIR = candidates[0]
+
+# 4) выведем в stderr, чтобы увидеть в логах, откуда реально берутся шаблоны
+print(f">>> Using templates from: {TPL_DIR}", file=sys.stderr)
+
+# 5) инициализируем Jinja
+TEMPLATES = Jinja2Templates(directory=str(TPL_DIR))
+STATIC    = BASE  / "static"
 JS_DIR    = STATIC / "js"
 IMG_DIR   = STATIC / "img"
 UPLOADS   = STATIC / "uploads"
 RECORDS   = STATIC / "records"
-TEMPLATES = Jinja2Templates(directory=str(TEMPLATES_DIR))
-STATS     = BASE_DIR  / "stats.json"
-META      = BASE_DIR  / "videos.json"
+TEMPLATES = Jinja2Templates(directory=str(TEMPLATES))
+STATS     = BASE  / "stats.json"
+META      = BASE  / "videos.json"
 
 # создаём папки и файлы
 for d in (STATIC, JS_DIR, IMG_DIR, UPLOADS, RECORDS):
