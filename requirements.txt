@@ -1,4 +1,11 @@
+<<<<<<< HEAD
 fastapi[all]
 uvicorn
 jinja2
 python-multipart
+=======
+fastapi[all]
+uvicorn
+jinja2
+python-multipart
+>>>>>>> f76d8241a99115df8e9e9bff7ae0beea6767e485
